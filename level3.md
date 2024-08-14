@@ -1,5 +1,5 @@
 ⚠️ 이번 글은 팀 프로젝트에 대한 내용으로,
-"반갑개"에 [소개글](https://github.com/woowacourse-teams/2024-friendogly)를 읽거나 앱을 [다운로드](https://github.com/woowacourse-teams/2024-friendogly/releases)하면 더 잘 이해하실 수 있을 것이다.
+"반갑개"에 [소개글](https://github.com/woowacourse-teams/2024-friendogly)를 읽거나 앱을 [다운로드](https://github.com/woowacourse-teams/2024-friendogly/releases)하면 더 잘 이해할 수 있을 것이다.
 
 # 개발자는 뭐? 자신감! 우아하게 저질러 보고, 깨지고, 성장하고! 🤨⚽️
 
