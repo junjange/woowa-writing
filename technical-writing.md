@@ -272,6 +272,53 @@ EventFlow는 이벤트가 발생했을 때 이를 캐시한 후, 해당 이벤�
 > 💡 즉, 소비되지 않은 이벤트를 `캐시`하고 있다가 `소비`하는 형태입니다.
 
 
+```kotlin
+interface EventFlow<out T> : Flow<T> {
+
+    companion object {
+
+        const val DEFAULT_REPLAY: Int = 3
+    }
+}
+
+interface MutableEventFlow<T> : EventFlow<T>, FlowCollector<T>
+
+@Suppress("FunctionName")
+fun <T> MutableEventFlow(
+    replay: Int = EventFlow.DEFAULT_REPLAY
+): MutableEventFlow<T> = EventFlowImpl(replay)
+
+fun <T> MutableEventFlow<T>.asEventFlow(): EventFlow<T> = ReadOnlyEventFlow(this)
+
+private class ReadOnlyEventFlow<T>(flow: EventFlow<T>) : EventFlow<T> by flow
+
+private class EventFlowImpl<T>(
+    replay: Int
+) : MutableEventFlow<T> {
+
+    private val flow: MutableSharedFlow<EventFlowSlot<T>> = MutableSharedFlow(replay = replay)
+
+    @InternalCoroutinesApi
+    override suspend fun collect(collector: FlowCollector<T>) = flow
+        .collect { slot ->
+            if (!slot.markConsumed()) {
+                collector.emit(slot.value)
+            }
+        }
+
+    override suspend fun emit(value: T) {
+        flow.emit(EventFlowSlot(value))
+    }
+}
+
+private class EventFlowSlot<T>(val value: T) {
+
+    private val consumed: AtomicBoolean = AtomicBoolean(false)
+
+    fun markConsumed(): Boolean = consumed.getAndSet(true)
+}
+
+```
 
 그러나 EventFlow만 사용하는 것도 문제가 있습니다.
 
@@ -286,8 +333,6 @@ EventFlow는 이벤트가 발생했을 때 이를 캐시한 후, 해당 이벤�
 
 
 
-
-
 > 💡 즉, 여러 구독자에게 데이터를 동시에 전달하는 SharedFlow의 장점이 사라집니다.
 
 
@@ -299,6 +344,48 @@ EventFlow + HashMap은 이벤트가 발생했을 때 이를 캐시하고, 이벤
 > 💡 즉, 소비되지 않은 `이벤트`를 `캐시`하고 있다가, `새로운 옵저버`가 `구독`할 때 해당 이벤트를 `전달`하는 형태입니다.
 
 
+```kotlin
+private class EventFlowImpl<T>(
+    replay: Int
+) : MutableEventFlow<T> {
+
+    private val flow: MutableSharedFlow<EventFlowSlot<T>> = MutableSharedFlow(replay = replay)
+
+    private val slotStore: ArrayDeque<Slot<EventFlowSlot<T>>> = ArrayDeque()
+
+    @InternalCoroutinesApi
+    override suspend fun collect(collector: FlowCollector<T>) = flow
+        .collect { slot ->
+
+            val slotKey = collector.javaClass.name + slot
+
+            if(isContainKey(slotKey)) {
+                if(slotStore.size > MAX_CACHE_EVENT_SIZE) slotStore.removeFirst()
+                slotStore.addLast(Slot(slotKey, EventFlowSlot(slot.value)))
+            }
+
+            val slotValue = slotStore.find { it.key == slotKey }?.value ?: slot
+
+            if (slotValue.markConsumed().not()) {
+                collector.emit(slotValue.value)
+            }
+        }
+
+    override suspend fun emit(value: T) {
+        flow.emit(EventFlowSlot(value))
+    }
+
+    fun isContainKey(findKey: String): Boolean {
+        return slotStore.find { it.key == findKey } == null
+    }
+}
+
+private data class Slot<T>(
+    val key: String,
+    val value: T
+)
+
+```
 
 
 ### HashMap의 역할
